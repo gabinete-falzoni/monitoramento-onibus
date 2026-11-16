@@ -1,0 +1,48 @@
+# ---- Dados brutos e materiais internos (não publicar) ----
+x_dados/
+
+# Credenciais
+token_olho_vivo.txt
+*token*.txt
+.Renviron
+.env
+
+# Script com dados estáticos de veículos (não publicar)
+businfo_dados_estaticos_veiculos.R
+
+# ---- R / RStudio ----
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+.httr-oauth
+
+# Rcpp: cache de compilação do sourceCpp (binários e caminhos absolutos da máquina)
+projeto_onibus/src/.cache/
+*.o
+*.so
+*.dll
+
+# Quarto / knitr
+.quarto/
+*_files/
+*_cache/
+/.luarc.json
+
+# ---- Logs de execução (contêm caminhos locais) ----
+logs/
+*.log
+
+# ---- Saídas avulsas ----
+# HTMLs deixados na raiz de projeto_onibus por renderizações antigas
+# (os relatórios oficiais ficam em projeto_onibus/relatorios/linhas/)
+projeto_onibus/*.html
+
+# ---- Sistema / editores ----
+.DS_Store
+Thumbs.db
+*~
+.vscode/
+.idea/
+.claude/

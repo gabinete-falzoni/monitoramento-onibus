@@ -1,0 +1,69 @@
+parametro,valor
+algorithm_version,mm-ciclo-0.1.0
+audit_rule_version,ipp-0.2.0
+entrada.posicoes,"/mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/linha_7267_10_setembro.parquet, /mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/linha_701A_10_setembro.parquet"
+entrada.gtfs_dirs,"/mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/gtfs/20261104, /mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/gtfs/20260226"
+entrada.coletas_api_dir,/mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/linhas_collect/api
+entrada.coletas_api_datas,NULL
+entrada.raspagens_dir,/mnt/fern/Dados/gitlab/monitoramento-onibus/x_dados/linhas_collect
+entrada.raspagens_pastas,2026-10-25
+saida_dir,/mnt/fern/Dados/gitlab/monitoramento-onibus/projeto_onibus/dados/processados
+relatorio_dir,/mnt/fern/Dados/gitlab/monitoramento-onibus/projeto_onibus/relatorios
+linhas,NULL
+n_cores,2
+rodar_sensibilidade,TRUE
+gravar_arquivos_unicos,TRUE
+tz_local,America/Sao_Paulo
+hora_corte_dia,3
+bbox_sp,"-47.10, -46.30, -24.05, -23.30"
+crs_metrico,31983
+mm.raio_candidato_m,120
+mm.fundir_candidatos_m,40
+mm.max_candidatos,6
+mm.sigma_gps_m,25
+mm.beta_m,80
+mm.vmax_ms,19.44444
+mm.folga_m,150
+mm.recuo_tol_m,60
+mm.lacuna_quebra_s,1800
+mm.outlier_lookahead,6
+mm.penal_sl,0
+viagem.lacuna_interp_s,300
+viagem.lacuna_evento_s,180
+viagem.offset_partida_m,50
+viagem.offset_chegada_m,150
+viagem.janela_terminal_m,500
+viagem.vel_ref_terminal_ms,4.166667
+viagem.sobreposicao_min_m,1000
+viagem.cobertura_confirmada,0.9
+viagem.cobertura_provavel,0.7
+viagem.cobertura_parcial,0.25
+viagem.lacuna_max_confirmada_s,600
+viagem.vel_media_min_kmh,4
+viagem.vel_media_max_kmh,45
+passagem.lacuna_max_s,300
+frota.lacuna_min_s,600
+frota.lacuna_max_h,4
+frota.q_duracao,0.25
+frota.folga_min,10
+frota.tol_pos_m,300
+ipp.tolerancia_min,3
+ipp.janela_antecipacao_min,15
+ipp.janela_atraso_min,40
+ipp.custo_nao_assoc_prog,15
+ipp.custo_nao_assoc_obs,15
+ipp.janela_detect_antes_min,20
+ipp.janela_detect_depois_min,60
+ipp.lacuna_veiculo_s,600
+ipp.janela_veiculo_sumiu_h,4
+ipp.parcial_espuria_max,0.15
+ipp.quase_completa_min,0.95
+ipp.quase_completa_cob_min,0.7
+ipp.tolerancia_ampliada_min,4
+ipp.feriados,"2026-09-07, 2026-10-12, 2026-11-02, 2026-11-15, 2026-11-20, 2026-12-25"
+ipp.tipos_dia_invalidos,""
+ipp.detectar_D_igual_U,TRUE
+sensibilidade.raio_candidato_m," 80, 120, 200"
+sensibilidade.lacuna_interp_s,"180, 300, 600"
+sensibilidade.cobertura_confirmada,"0.80, 0.90, 0.95"
+sensibilidade.tolerancia_ipp_min,"2, 3, 5"

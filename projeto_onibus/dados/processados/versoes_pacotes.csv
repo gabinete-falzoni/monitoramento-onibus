@@ -1,0 +1,9 @@
+pacote,versao
+R,R version 4.5.3 (2026-03-11)
+data.table,1.17.0
+arrow,20.0.0
+sf,1.1.0
+lubridate,1.9.4
+ggplot2,3.5.2
+Rcpp,1.0.14
+dplyr,1.1.4

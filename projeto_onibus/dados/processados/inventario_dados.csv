@@ -1,0 +1,3 @@
+arquivo,tamanho_mb,md5,esquema,registros,veiculos,linhas,ta_min_utc,ta_max_utc
+linha_7267_10_setembro.parquet,2.16,d0d4b2bbbb24615877b4ba1b5171a535,"c:string, cl:int32, sl:int32, p:int32, ta:string, py:double, px:double",250075,81,1,2026-09-01T02:51:09Z,2026-10-01T02:59:23Z
+linha_701A_10_setembro.parquet,5.33,42fbcd06e14f1460bc884cc04ef85775,"c:string, cl:int32, sl:int32, p:int32, ta:string, py:double, px:double",652650,157,1,2026-09-01T02:50:35Z,2026-10-01T02:59:19Z

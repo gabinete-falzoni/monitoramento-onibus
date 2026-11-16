@@ -1,0 +1,536 @@
+---
+title: "Cumprimento da programação — linha `r params$linha`"
+subtitle: "`r params$mes_rotulo`"
+date: today
+lang: pt-BR
+params:
+  linha: "701A-10"
+  mes: "2026-09"
+  mes_rotulo: "setembro de 2026"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    theme: cosmo
+    page-layout: full
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+suppressPackageStartupMessages({library(data.table); library(arrow); library(ggplot2); library(htmltools)})
+PROJ_DIR <- normalizePath("..")
+source(file.path(PROJ_DIR, "R", "00_config.R"))
+source(file.path(PROJ_DIR, "R", "11_relatorio_linha.R"))
+source(file.path(PROJ_DIR, "R", "07_auditoria.R"))
+source(file.path(PROJ_DIR, "R", "12_frota.R"))
+source(file.path(PROJ_DIR, "R", "13_icv.R"))
+OUT <- cfg$saida_dir
+L <- params$linha
+au <- ler_auditoria_linha(L, params$mes)
+sent <- fread(file.path(OUT, "referencia_sentidos.csv"))[line_id == L]
+circ <- isTRUE(sent$circular[1])
+nome_sent <- function(d) {
+  h <- sent[direction_id == d, headsign]
+  if (circ) "circular" else sprintf("sentido %d → %s", d, if (length(h)) h else "?")
+}
+val <- au[grupo != "sem_avaliacao"]
+n <- function(s) sum(val$audit_status == s)
+num <- function(x) format(x, big.mark = ".", decimal.mark = ",")
+pc <- function(x, d) if (d > 0) sprintf("%.1f%%", 100 * x / d) else "–"
+fontes <- unique(au$schedule_source)
+# diagnóstico de frota (R/12_frota.R) e lacunas de GPS por veículo
+dg <- ler_tabela_linha("diagnostico_saidas", L, params$mes)
+lac <- ler_tabela_linha("lacunas_veiculos", L, params$mes)
+vdf <- ler_tabela_linha("veiculos_dia_frota", L, params$mes)
+if (nrow(dg)) au <- dg[, .(scheduled_trip_id, diagnostico_frota, detalhe_frota, veiculos_possiveis)][au, on = "scheduled_trip_id"]
+if (!"diagnostico_frota" %in% names(au)) au[, `:=`(diagnostico_frota = NA_character_, detalhe_frota = NA_character_)]
+inc <- au[audit_status == "inconclusiva"]
+n_inc_linha <- sum(inc$data_coverage_status == "insuficiente")
+n_inc_veic <- nrow(inc) - n_inc_linha
+n_tot <- function(s) sum(au$audit_status == s)
+n_inc_aberta <- sum(inc$so_lacuna_aberta %in% TRUE & inc$data_coverage_status != "insuficiente")
+# IPP (a, b, c) e ICV
+ipp <- indicadores_ipp(au, NULL)
+fx <- ler_tabela_linha("icv_faixas", L, params$mes)
+icv <- icv_resumo(fx)
+pct <- function(x) ifelse(is.na(x), "–", sprintf("%.1f%%", x))
+```
+
+```{=html}
+<style>
+.cards{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 18px}
+.card1{border:1px solid #e1e0d9;border-radius:8px;padding:10px 14px;min-width:130px}
+.card1 .v{font-size:1.6rem;font-weight:600;line-height:1.1}
+.card1 .l{font-size:.85rem;color:#5f5e57}
+.card1 .s{font-size:.75rem;color:#8a897f;margin-top:3px;max-width:230px}
+.cards.ind{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.cards.ind .card1{min-width:0;border-color:#c3c2b7;background:#fbfbf9}
+.cards.ind .card1 .s{max-width:none}
+.cards.ind .card1 .v{font-size:1.9rem}
+.sec{font-size:.8rem;font-weight:600;color:#5f5e57;text-transform:uppercase;letter-spacing:.04em;margin:4px 0 -4px}
+.card1 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:baseline}
+svg.grade .ax{font-size:10px;fill:#5f5e57;font-family:system-ui,sans-serif}
+svg.grade .ax2{font-size:8px;fill:#8a897f;font-family:system-ui,sans-serif}
+svg.grade rect:hover{stroke:#0b0b0b;stroke-width:1.5}
+.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:.85rem;margin:6px 0 10px}
+.legenda span i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.gradewrap{overflow-x:auto}
+.legenda .f{cursor:pointer;user-select:none;padding:2px 6px;border-radius:4px;border:1px solid transparent}
+.legenda .f:hover{border-color:#c3c2b7}
+.legenda .f.off{opacity:.35;text-decoration:line-through}
+.legenda .acoes{font-size:.78rem;color:#5f5e57}
+.legenda .acoes a{cursor:pointer;margin-left:6px}
+.blocos{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+.blocos .bl{display:flex;flex-direction:column}
+.blocos .bl .tit{font-size:.85rem;font-weight:600;margin-bottom:2px}
+.blocos .bl .sub{font-size:.75rem;color:#5f5e57;margin-bottom:4px}
+.blocos .fs{display:flex;gap:16px;align-items:flex-start}
+svg.grade rect.esc{opacity:.07}
+.nota{font-size:.88rem;background:#f7f6f2;border-left:3px solid #c3c2b7;padding:8px 12px;margin:8px 0 14px}
+.tbwrap{overflow-x:auto;max-height:640px;overflow-y:auto;border:1px solid #e1e0d9;border-radius:6px;margin:6px 0 16px}
+table.tb{border-collapse:collapse;font-size:.82rem;width:100%}
+table.tb th{position:sticky;top:0;background:#f5f4f0;text-align:left;padding:5px 8px;border-bottom:1px solid #c3c2b7;white-space:nowrap;cursor:pointer}
+table.tb th.n,table.tb td.n{text-align:right}
+table.tb td{padding:3px 8px;border-bottom:1px solid #efeee9;vertical-align:top;white-space:nowrap}
+table.tb tbody tr:nth-child(even){background:#fafaf7}
+table.tb td.hl{font-weight:600;color:#b02a2a}
+table.tb td.mono{font-family:monospace;font-size:.78rem;text-align:left;white-space:normal;min-width:460px}
+table.tb td.wrap{white-space:normal;min-width:340px}
+table.tb .bar{display:inline-block;height:8px;border-radius:2px;margin-right:6px;vertical-align:0}
+.busca{margin:4px 0;padding:3px 8px;border:1px solid #c3c2b7;border-radius:4px;font-size:.85rem;width:260px}
+</style>
+<script>
+// Melhoria opcional: busca e ordenação por clique no cabeçalho. Sem JavaScript as
+// tabelas continuam completas e legíveis.
+document.addEventListener("DOMContentLoaded", function () {
+  // legenda da grade = filtro: clique num status para esconder/mostrar suas células
+  var off = {};
+  function aplica() {
+    document.querySelectorAll("svg.grade rect[data-s]").forEach(function (r) {
+      r.classList.toggle("esc", !!off[r.dataset.s]);
+    });
+    document.querySelectorAll(".legenda .f").forEach(function (b) { b.classList.toggle("off", !!off[b.dataset.s]); });
+  }
+  document.querySelectorAll(".legenda .f").forEach(function (b) {
+    b.addEventListener("click", function () { off[b.dataset.s] = !off[b.dataset.s]; aplica(); });
+  });
+  document.querySelectorAll(".legenda .acoes a").forEach(function (a) {
+    a.addEventListener("click", function () {
+      var modo = a.dataset.m;
+      document.querySelectorAll(".legenda .f").forEach(function (b) {
+        off[b.dataset.s] = modo === "falhas" ? ["realizada_no_horario"].indexOf(b.dataset.s) >= 0 : false;
+      });
+      aplica();
+    });
+  });
+  document.querySelectorAll("table.tb").forEach(function (tb) {
+    var inp = document.createElement("input");
+    inp.className = "busca"; inp.placeholder = "Filtrar linhas…";
+    tb.parentNode.parentNode.insertBefore(inp, tb.parentNode);
+    var body = tb.tBodies[0];
+    inp.addEventListener("input", function () {
+      var q = inp.value.toLowerCase();
+      Array.from(body.rows).forEach(function (r) { r.style.display = r.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none"; });
+    });
+    Array.from(tb.tHead.rows[0].cells).forEach(function (th, j) {
+      var asc = false;
+      th.addEventListener("click", function () {
+        asc = !asc;
+        var rows = Array.from(body.rows), num = th.classList.contains("n");
+        rows.sort(function (a, b) {
+          var x = a.cells[j].dataset.v, y = b.cells[j].dataset.v;
+          var c = num ? (parseFloat(x || "NaN") || 0) - (parseFloat(y || "NaN") || 0) : x.localeCompare(y, "pt-BR");
+          return asc ? c : -c;
+        });
+        rows.forEach(function (r) { body.appendChild(r); });
+      });
+    });
+  });
+});
+</script>
+```
+
+## Resumo
+
+Saídas programadas no mês: **`r num(nrow(au))`**, das quais **`r num(nrow(val))`** são
+avaliáveis (programação válida e dentro do período coletado de GPS).
+
+```{r cards}
+card <- function(v, l, cor = NULL, sub = NULL) div(class = "card1", div(class = "v", v),
+  div(class = "l", if (!is.null(cor)) span(class = "sw", style = paste0("background:", cor)), l),
+  if (!is.null(sub)) div(class = "s", sub))
+cor_de <- function(s) STATUS[audit_status == s, cor]
+tagList(
+  div(class = "sec", "Indicadores (referência SPTrans: 97%)"),
+  div(class = "cards ind",
+    card(pct(ipp$IPP_pct), "IPP (a) oficial",
+         sub = sprintf("%s de %s saídas no horário (±3 min) com viagem completa", num(ipp$no_horario), num(ipp$programadas_validas))),
+    card(pct(ipp$IPP_b_pct), "IPP (b) com parciais e inconclusivas",
+         sub = sprintf("+ saídas no horário que não completaram (sem as partidas espúrias) e as %s inconclusivas", num(ipp$inconclusivas))),
+    card(pct(ipp$IPP_c_pct), "IPP (c) como (b), tolerância ±4 min",
+         sub = "margem de segurança de 1 min a mais para os dois lados"),
+    card(pct(100 * icv$mes), "ICV cumprimento de viagens",
+         sub = "viagens completas por faixa horária, limitadas ao programado (ficha IQT.GSO.001.05)"),
+    card(pct(100 * icv$mes_amp), "ICV ampliado",
+         sub = "+ viagens quase completas (≥95% do traçado) e saídas inconclusivas")),
+  div(class = "sec", "Classificação das saídas"),
+  div(class = "cards",
+    card(num(n("realizada_no_horario")), "no horário", cor_de("realizada_no_horario")),
+    card(num(n("realizada_com_atraso")), "atrasadas", cor_de("realizada_com_atraso")),
+    card(num(n("realizada_antecipadamente")), "antecipadas", cor_de("realizada_antecipadamente")),
+    card(num(n("viagem_quase_completa")), "quase completas (≥95% do traçado)", cor_de("viagem_quase_completa")),
+    card(num(n("partida_sem_viagem_completa")), "saíram e não completaram", cor_de("partida_sem_viagem_completa")),
+    card(num(n("possivelmente_nao_realizada")), "não realizadas (puladas)", cor_de("possivelmente_nao_realizada"))),
+  div(class = "cards",
+    card(num(n_inc_linha), "inconclusivas: sem dados da linha", cor_de("inconclusiva")),
+    card(num(n_inc_veic - n_inc_aberta), "inconclusivas: ônibus com lacuna de GPS", cor_de("inconclusiva"),
+         sub = "sumiu e voltou a transmitir, ou um ônibus sem GPS poderia ter feito a viagem"),
+    card(num(n_inc_aberta), "inconclusivas: ônibus parou de transmitir", cor_de("inconclusiva"),
+         sub = sprintf("último sinal no itinerário e não voltou; vale até %d h depois", cfg$ipp$janela_veiculo_sumiu_h)),
+    if (n_tot("programacao_invalida") > 0)
+      card(num(n_tot("programacao_invalida")), "programação inválida (fora do IPP)", cor_de("programacao_invalida")),
+    if (n_tot("fora_do_periodo_coletado") > 0)
+      card(num(n_tot("fora_do_periodo_coletado")), "fora do período coletado (fora do IPP)", cor_de("fora_do_periodo_coletado"))))
+```
+
+**Como ler os indicadores.**
+
+- **IPP (a) oficial**: saídas que partiram até 3 min antes ou depois do horário **e** cuja
+  viagem foi reconstruída do início ao fim, divididas pelas saídas programadas avaliáveis.
+  É o cálculo da ficha SPTrans IQT.GSO.002.03, com a exigência adicional de viagem completa.
+- **IPP (b)**: soma ao numerador as saídas que partiram no horário (±3 min) mas não
+  completaram, **exceto as partidas espúrias** (ver abaixo), e todas as **inconclusivas**,
+  com o benefício da dúvida. É um limite superior: o que o IPP seria se toda falha de GPS
+  escondesse uma viagem pontual.
+- **IPP (c)**: igual ao (b), com tolerância de ±4 min.
+- **ICV** (ficha IQT.GSO.001.05): em cada dia, sentido e faixa horária (hora), conta as
+  viagens completas que partiram naquela hora, **limitadas ao número programado**. As faixas
+  são agrupadas nos períodos da ficha (madrugada, antes do pico, pico da manhã, entre picos,
+  pico da tarde e noite). O ICV do dia é a média dos períodos, o do mês é a média dos dias e,
+  em linha não circular, a média dos dois sentidos. Diferente do IPP, o ICV não exige que a
+  viagem saia no horário, só que ela aconteça na mesma hora.
+- **ICV ampliado**: conta também as viagens quase completas e as saídas inconclusivas.
+
+**Como ler a classificação.**
+
+- *No horário / Atrasada / Antecipada*: houve viagem completa (origem → destino) associada
+  ao horário; a diferença de partida ficou dentro ou fora de ±3 min.
+- *Quase completa*: o ônibus partiu e percorreu ao menos 95% do traçado, com GPS em pelo menos
+  70% do caminho, mas a chegada não foi registrada, porque o GPS "salta" para o ponto final
+  depois de alguns minutos sem sinal. A viagem muito provavelmente ocorreu, mas não entra no
+  IPP oficial.
+- *Saiu, não completou*: houve partida, mas o ônibus percorreu entre 15% e 95% do traçado.
+- **Partida espúria**: quando o "percurso" observado cobre menos de 15% do traçado, o ônibus
+  não saiu de fato. É o GPS do veículo parado no terminal sendo associado a um trecho de viário
+  próximo, que depois "volta" para o terminal. Essa partida é **descartada** e a saída é
+  avaliada como se ela não existisse: outra partida pode ser associada a ela, ou ela fica não
+  realizada ou inconclusiva. O texto da saída registra a partida descartada.
+- *Não realizada*: nenhum ônibus partiu do terminal na janela (−15/+40 min), havia GPS da
+  linha nesse período e **nenhum ônibus sem GPS poderia ter feito a viagem**. É o horário
+  **pulado**.
+- *Inconclusiva*: sem partida observada, mas não dá para afirmar que a saída não ocorreu.
+  Há **três casos**, contados separadamente nos quadros acima:
+  1. **sem dados da linha**: em menos de 50% dos minutos da janela (−20/+60 min) havia GPS
+     de **qualquer** ônibus da linha. É uma falha geral de coleta ou transmissão;
+  2. **ônibus com lacuna de GPS**: um veículo identificado ficou mais de 10 min sem transmitir
+     e depois voltou, ou o modelo de frota mostra que um ônibus sem GPS conseguiria fazer a
+     viagem;
+  3. **ônibus parou de transmitir**: o último sinal do veículo no dia foi no itinerário e ele
+     não transmitiu mais. Ele pode ter seguido operando sem GPS. As saídas até
+     `r cfg$ipp$janela_veiculo_sumiu_h` h depois ficam inconclusivas, desde que ele consiga
+     chegar à origem a tempo.
+
+  A seção [Veículos e lacunas de GPS] mostra, saída a saída, quais ônibus poderiam tê-la feito.
+- *Programação inválida*: a tabela de horários daquele tipo de dia foi descartada na
+  leitura (por exemplo, a tabela de domingo raspada pelo navegador que era cópia da de dia
+  útil). O horário não é auditado e **não entra no IPP**.
+- *Fora do período*: o horário cai antes do início ou depois do fim dos arquivos de GPS
+  disponíveis; também fica fora do IPP.
+
+Fonte da programação: `r paste(fontes, collapse = "; ")`.
+
+## Grade de cumprimento
+
+Cada coluna é um dia e cada linha, um horário da tabela daquele tipo de dia. Passe o
+mouse sobre uma célula para ver o horário, a partida observada, o veículo e a evidência.
+Faixas vermelhas na **horizontal** indicam um horário pulado de forma recorrente; na
+**vertical**, um dia problemático.
+
+A legenda também é um filtro: clique num status para esconder ou mostrar as células
+dele em todas as grades (exige JavaScript; sem ele, a grade aparece completa).
+
+```{r legenda}
+pres <- STATUS[audit_status %in% unique(au$audit_status)]
+div(class = "legenda", lapply(seq_len(nrow(pres)), function(i)
+  span(class = "f", `data-s` = pres$audit_status[i], tags$i(style = paste0("background:", pres$cor[i])),
+       sprintf("%s (%s)", pres$rotulo[i], num(n_tot(pres$audit_status[i]))))),
+  span(class = "acoes", "mostrar:", tags$a(`data-m` = "todos", "tudo"), tags$a(`data-m` = "falhas", "só problemas")))
+```
+
+```{r grades, results='asis'}
+tipos <- c(U = "Dias úteis", S = "Sábados", D = "Domingos e feriados")
+bloco <- function(d, tp) {
+  a <- au[direction_id == d & tipo_dia == tp]
+  if (!nrow(a)) return(NULL)
+  div(class = "bl", div(class = "tit", tipos[tp]),
+      div(class = "sub", sprintf("%d saídas/dia na tabela", uniqueN(a$min_dia))), grade_svg(a))
+}
+for (d in sort(unique(au$direction_id))) {
+  cat(sprintf("\n### %s\n\n", nome_sent(d)))
+  # dias úteis à esquerda; sábados e domingos lado a lado à direita (quebram linha se faltar largura)
+  html <- as.character(div(class = "gradewrap", div(class = "blocos", bloco(d, "U"),
+                                                   div(class = "fs", bloco(d, "S"), bloco(d, "D")))))
+  cat("\n```{=html}\n", html, "\n```\n\n", sep = "")   # bloco cru: o pandoc não reinterpreta o HTML
+}
+```
+
+## Não cumprimento por hora do dia
+
+```{r porhora}
+h <- val[, .(N = .N), by = .(hora = pmin(min_dia %/% 60L, 27L), rotulo)]
+h[, rotulo := factor(rotulo, levels = STATUS$rotulo)]
+g <- ggplot(h, aes(hora, N, fill = rotulo)) +
+  geom_col(width = 0.85, colour = "white", linewidth = 0.3) +
+  scale_fill_manual(values = setNames(STATUS$cor, STATUS$rotulo), name = NULL) +
+  scale_x_continuous(breaks = seq(0, 27, 2), labels = function(x) sprintf("%02dh", x)) +
+  labs(x = "hora programada da saída", y = "saídas no mês") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank(), panel.grid.major.x = element_blank(), legend.position = "top")
+svg_inline(g)
+```
+
+## Horários mais pulados
+
+Por horário da tabela: em quantos dias do mês ele foi avaliado e o que aconteceu. A
+tabela vem ordenada pelo número de vezes em que o horário foi pulado (não realizado ou
+sem viagem completa); `dias_nao_realizada` lista os dias do mês. Com JavaScript habilitado,
+clique nos cabeçalhos para reordenar e use o campo de filtro.
+
+```{r tab_horarios}
+th <- tabela_horarios(au)
+th[, sentido := vapply(direction_id, nome_sent, "")]
+th <- th[, .(sentido, tipo_dia, horario, dias_avaliados, no_horario, atrasada, antecipada,
+             quase_completa, saiu_nao_completou, nao_realizada, pct_pulada, dias_nao_realizada)]
+rot_h <- c(tipo_dia = "tipo", horario = "horário", dias_avaliados = "dias aval.", no_horario = "no horário",
+           quase_completa = "quase compl.",
+           saiu_nao_completou = "saiu s/ completar", nao_realizada = "não realizada", pct_pulada = "% pulada",
+           dias_nao_realizada = "dias em que não foi realizada")
+pul <- th[nao_realizada + saiu_nao_completou > 0]
+tagList(
+  tags$p(sprintf("%d horários foram pulados ao menos uma vez no mês (de %d horários na tabela).",
+                 nrow(pul), nrow(th))),
+  tabela_html(pul, rot_h, id = "tab_pulados", barra = "pct_pulada", destaque = "nao_realizada"),
+  tags$details(tags$summary(sprintf("Todos os %d horários da tabela", nrow(th))),
+               tabela_html(th, rot_h, id = "tab_horarios", barra = "pct_pulada", destaque = "nao_realizada")))
+```
+
+## Dias com horários não cumpridos
+
+Um dia por linha. `horários não realizados` lista as saídas puladas como `S<sentido> HH:MM`.
+
+```{r tab_dias}
+td <- tabela_dias(au)
+td[, dia := sprintf("%s %s", format(service_date, "%d/%m"),
+                    c("dom", "seg", "ter", "qua", "qui", "sex", "sáb")[as.POSIXlt(service_date)$wday + 1])]
+ipd <- indicadores_ipp(au, "service_date")[, .(service_date, IPP_b = IPP_b_pct, IPP_c = IPP_c_pct)]
+td <- ipd[td, on = "service_date"]
+if (nrow(icv$dia)) td <- icv$dia[, .(service_date, ICV = round(100 * icv, 1), ICV_amp = round(100 * icv_amp, 1))][td, on = "service_date"]
+if (!"ICV" %in% names(td)) td[, `:=`(ICV = NA_real_, ICV_amp = NA_real_)]
+td <- td[, .(dia, tipo_dia, nao_realizada, horarios_nao_realizados, saiu_nao_completou, quase_completa, IPP_pct,
+             IPP_b, IPP_c, ICV, ICV_amp, programadas, validas, no_horario, fora_tolerancia, inconclusiva)]
+tabela_html(td, c(tipo_dia = "tipo", validas = "válidas", IPP_pct = "IPP (a) %", IPP_b = "IPP (b) %", IPP_c = "IPP (c) %",
+                  ICV = "ICV %", ICV_amp = "ICV ampl. %", quase_completa = "quase compl.", no_horario = "no horário",
+                  fora_tolerancia = "fora tol.", saiu_nao_completou = "saiu s/ compl.",
+                  nao_realizada = "não realiz.", inconclusiva = "inconcl.",
+                  horarios_nao_realizados = "horários não realizados"),
+            id = "tab_dias", destaque = "nao_realizada", mono = "horarios_nao_realizados")
+```
+
+## Cumprimento de viagens (ICV)
+
+O ICV segue a ficha SPTrans IQT.GSO.001.05. Em cada faixa horária e sentido, conta as
+viagens completas que **partiram** naquela hora, até o limite do número programado, e
+divide pelo programado. As faixas são agrupadas nos períodos da ficha. A tabela traz, para
+cada período, o total do mês e o ICV, que é a média dos ICV diários. `r if (circ) "Linha circular: calculado sem distinção de sentido, como manda a ficha." else ""`
+
+Diferenças em relação à ficha, por limitação dos dados: a OSO é substituída pela tabela de
+horários coletada; as ocorrências registradas pelo COP (que permitem expurgar dias ou
+horas) não estão disponíveis; e a ficha não diz como somar as faixas dentro de um período,
+por isso aqui é usada a soma das realizadas sobre a soma das programadas.
+
+```{r icv}
+if (!nrow(fx)) {
+  tags$p(tags$em("ICV não disponível: rode o pipeline novamente."))
+} else {
+  pm <- PERIODOS_ICV[icv$periodo_mes, on = "periodo"]
+  pm[, ord := match(periodo, c("PPN", "APM", "PM", "EP", "PT", "PN"))]
+  setorder(pm, sentido, ord)
+  pm <- pm[, .(sentido = if (circ) "circular" else vapply(sentido, nome_sent, ""), periodo = rotulo, dias,
+               programadas, realizadas, ICV = round(100 * icv, 1), quase_e_inconcl = ampliadas - realizadas,
+               ICV_ampliado = round(100 * icv_amp, 1))]
+  tagList(
+    tabela_html(pm, c(realizadas = "realizadas (limitadas)", quase_e_inconcl = "+ quase compl. e inconcl.",
+                      ICV = "ICV %", ICV_ampliado = "ICV ampliado %", periodo = "período"),
+                id = "tab_icv"),
+    if (!circ) tags$p(sprintf("ICV mensal por sentido: %s. ICV da linha = média dos sentidos = %s.",
+                              paste(sprintf("%s %s", vapply(icv$sentido$sentido, nome_sent, ""), pct(100 * icv$sentido$icv)),
+                                    collapse = "; "), pct(100 * icv$mes))))
+}
+```
+
+## Veículos por dia
+
+Veículos que transmitiram no itinerário da linha em cada dia de serviço, com o número de
+viagens completas de cada um entre parênteses. Todo ônibus para de transmitir no fim do
+turno; a marca † (com a hora do último sinal) indica só os que sumiram **enquanto ainda havia
+saídas sem partida observada que eles poderiam ter feito**. Essas saídas ficaram inconclusivas.
+
+```{r veic_dia}
+if (nrow(vdf) && "registros_em_rota" %in% names(vdf)) {
+  vx <- vdf[registros_em_rota > 0][order(service_date, vehicle_id)]
+  usa <- if (nrow(lac) && "aberta" %in% names(lac)) unique(lac[aberta == TRUE & n_saidas > 0, .(vehicle_id, service_date, sumiu_usado = TRUE)]) else
+    data.table(vehicle_id = character(), service_date = as.Date(character()), sumiu_usado = logical())
+  vx <- usa[vx, on = .(vehicle_id, service_date)][is.na(sumiu_usado), sumiu_usado := FALSE]
+  vx[, rot := sprintf("%s (%d)%s", vehicle_id, completas,
+                      fifelse(sumiu_usado, paste0(" †", ultimo_sinal_local), ""))]
+  tipo_de <- unique(au[, .(service_date, tipo_dia)])
+  vt <- vx[, .(n_veiculos = .N, viagens_completas = sum(completas),
+               sumiram_com_saidas = sum(sumiu_usado),
+               veiculos = paste(rot, collapse = "  ")), by = service_date]
+  vt <- tipo_de[vt, on = "service_date"]
+  vt[, dia := sprintf("%s %s", format(service_date, "%d/%m"),
+                      c("dom", "seg", "ter", "qua", "qui", "sex", "sáb")[as.POSIXlt(service_date)$wday + 1])]
+  med <- vt[, .(media = round(mean(n_veiculos), 1), min = min(n_veiculos), max = max(n_veiculos)), by = tipo_dia]
+  # matriz veículo × dia (viagens completas)
+  mx <- dcast(vx, vehicle_id ~ format(service_date, "%d"), value.var = "completas", fill = NA)
+  setnames(mx, "vehicle_id", "veículo")
+  mx[, dias := rowSums(!is.na(.SD)), .SDcols = setdiff(names(mx), "veículo")]
+  setcolorder(mx, c("veículo", "dias"))
+  tagList(
+    tags$p(paste(sprintf("%s: %s veículos por dia em média (de %d a %d)",
+                         c(U = "Dias úteis", S = "Sábados", D = "Domingos e feriados")[med$tipo_dia],
+                         format(med$media, decimal.mark = ","), med$min, med$max), collapse = "; ") |> paste0(".")),
+    tabela_html(vt[, .(dia, tipo_dia, n_veiculos, viagens_completas, sumiram_com_saidas, veiculos)],
+                c(tipo_dia = "tipo", n_veiculos = "veículos", viagens_completas = "viagens completas",
+                  sumiram_com_saidas = "sumiram (†)", veiculos = "veículos (viagens completas)"),
+                id = "tab_veic_dia", mono = "veiculos"),
+    tags$details(tags$summary("Matriz veículo × dia (viagens completas; vazio = não operou)"),
+                 tabela_html(mx, id = "tab_veic_matriz")))
+} else tags$p(tags$em("Dados de veículos por dia não disponíveis: rode o pipeline novamente."))
+```
+
+## Veículos e lacunas de GPS
+
+Quando um ônibus **em serviço** para de transmitir, as saídas daquele período ficam
+inconclusivas. Esta seção pergunta se **algum ônibus da linha poderia fisicamente ter feito**
+cada saída inconclusiva, não realizada ou sem viagem completa sem ser visto. Para isso, usa
+onde cada veículo sumiu e onde reapareceu:
+
+- uma **lacuna** é um intervalo de mais de 10 min sem registros de um veículo que estava no
+  itinerário antes e depois. Sabemos o ponto do percurso (km) em que ele sumiu e em que
+  reapareceu;
+- o veículo "poderia" ter feito a saída se, andando como numa viagem rápida do dia (as 25%
+  mais rápidas) e sem descanso no terminal, conseguisse chegar à origem até 40 min depois do
+  horário, cumprir o percurso e ainda chegar ao ponto onde reapareceu (com 10 min de folga).
+  A conta é otimista de propósito: quando ela diz que **nenhum ônibus poderia**, é um
+  indício forte de que a saída não foi feita;
+- um veículo que **parou de transmitir** no itinerário e não voltou no dia também conta: ele
+  pode ter feito as saídas seguintes sem GPS, desde que consiga chegar à origem a tempo
+  (janela de até `r cfg$ipp$janela_veiculo_sumiu_h` h depois do último sinal). Não há ponto de
+  reaparecimento para conferir, por isso esse caso é mais fraco que uma lacuna fechada;
+- **parado sem sinal**: o veículo sumiu e reapareceu no mesmo ponto (em geral, o terminal)
+  num intervalo curto demais para uma volta completa. Ficou parado ou desligado e não fez
+  viagem nesse período;
+- uma lacuna em que cabem *k* viagens não pode explicar mais de *k* saídas. A coluna
+  "saídas que disputam a lacuna" mostra quando duas ou mais saídas inconclusivas dependem
+  da mesma lacuna;
+- um veículo com **GPS intermitente recorrente** (duas ou mais lacunas no dia que comportam
+  viagens e explicam saídas sem partida observada) é o caso a conferir por fonte externa,
+  como a bilhetagem.
+
+O diagnóstico também ajusta a classificação: uma saída só é **não realizada** se nenhum
+ônibus sem GPS poderia tê-la feito. Se algum poderia, ela passa a **inconclusiva**. Uma
+inconclusiva por lacuna fechada (o ônibus sumiu e voltou) continua inconclusiva mesmo quando
+o modelo diz que nenhum ônibus poderia; nesses casos a evidência fica registrada para
+checagem.
+
+```{r frota_resumo}
+if (!nrow(dg)) {
+  tags$p(tags$em("Diagnóstico de frota não disponível: rode o pipeline novamente."))
+} else {
+  rs <- au[!is.na(diagnostico_frota), .N, by = .(status = rotulo, diagnostico = ROTULO_DIAG[diagnostico_frota])]
+  rs <- dcast(rs, diagnostico ~ status, value.var = "N", fill = 0)
+  tabela_html(rs, c(diagnostico = "diagnóstico de frota"), id = "tab_frota_resumo")
+}
+```
+
+### Saídas sem partida observada: o que a frota permite dizer
+
+```{r frota_saidas}
+if (nrow(dg)) {
+  fs <- au[!is.na(diagnostico_frota)][order(service_date, min_dia, direction_id)]
+  fs <- fs[, .(dia = format(service_date, "%d/%m"), tipo_dia, sentido = paste0("S", direction_id),
+               horario = horario_grade, status = rotulo, diagnostico = ROTULO_DIAG[diagnostico_frota],
+               detalhe = detalhe_frota)]
+  tabela_html(fs, c(tipo_dia = "tipo", horario = "horário", diagnostico = "diagnóstico de frota"),
+              id = "tab_frota_saidas", quebra = "detalhe")
+}
+```
+
+### Veículos com lacunas de GPS, por dia
+
+Só os veículos e dias com ao menos uma lacuna, ou que pararam de transmitir enquanto havia
+saídas sem partida observada que eles poderiam ter feito. *Saídas explicáveis* é quantas saídas sem
+partida observada as lacunas desse veículo poderiam explicar.
+
+```{r frota_veic}
+if (nrow(vdf)) {
+  usa2 <- if (nrow(lac) && "aberta" %in% names(lac)) unique(lac[aberta == TRUE & n_saidas > 0, .(vehicle_id, service_date, su = TRUE)]) else
+    data.table(vehicle_id = character(), service_date = as.Date(character()), su = logical())
+  vv <- usa2[vdf, on = .(vehicle_id, service_date)][is.na(su), su := FALSE]
+  vv <- vv[lacunas_10min > 0 | su][order(-saidas_explicaveis, -min_sem_gps)]
+  vv <- vv[, .(veiculo = vehicle_id, dia = format(service_date, "%d/%m"), viagens_completas = completas,
+               viagens_parciais = parciais, lacunas = lacunas_10min, min_sem_gps,
+               cabem_viagem = lacunas_que_cabem_viagem, parado_sem_sinal = lacunas_parado,
+               parou_de_transmitir = fifelse(su, paste("às", ultimo_sinal_local), ""),
+               saidas_explicaveis, padrao = fifelse(padrao == "gps_intermitente_recorrente",
+                                                    "GPS intermitente recorrente", fifelse(padrao == "", "", "lacuna isolada")))]
+  rec <- vv[padrao == "GPS intermitente recorrente"]
+  tagList(
+    if (nrow(rec)) div(class = "nota", tags$b("GPS intermitente recorrente: "),
+                       paste(sprintf("%s em %s", rec$veiculo, rec$dia), collapse = "; "),
+                       ". Verificar na bilhetagem se as viagens ocorreram.")
+    else div(class = "nota", "Nenhum veículo com GPS intermitente recorrente neste mês."),
+    tabela_html(vv, c(viagens_completas = "viagens completas", viagens_parciais = "parciais",
+                      min_sem_gps = "min sem GPS", cabem_viagem = "lacunas que cabem viagem",
+                      parado_sem_sinal = "parado sem sinal", parou_de_transmitir = "parou de transmitir",
+                      saidas_explicaveis = "saídas explicáveis",
+                      padrao = "padrão"), id = "tab_frota_veic", destaque = "saidas_explicaveis"))
+}
+```
+
+<details><summary>Todas as lacunas de GPS do mês</summary>
+
+```{r frota_lacunas}
+if (nrow(lac)) {
+  ll <- lac[order(service_date, vehicle_id, inicio_local)]
+  if ("aberta" %in% names(ll)) ll <- ll[aberta == FALSE | n_saidas > 0]
+  ll <- ll[, .(dia = format(service_date, "%d/%m"), veiculo = vehicle_id, sumiu = inicio_local,
+               voltou = fifelse(is.na(fim_local), "não voltou", fim_local),
+               minutos = dur_min, km_sumiu = s0_km, km_voltou = s1_km, viagens_que_cabem = viagens_max,
+               tipo = c(parado_sem_sinal = "parado sem sinal", deslocou_sem_sinal = "deslocou sem sinal",
+                        cabe_viagem_sem_sinal = "cabe viagem sem sinal", parou_de_transmitir = "parou de transmitir")[tipo],
+               saidas_que_disputam = saidas)]
+  tabela_html(ll, c(km_sumiu = "km onde sumiu", km_voltou = "km onde voltou", viagens_que_cabem = "viagens que cabem (máx.)",
+                    saidas_que_disputam = "saídas que disputam a lacuna"), id = "tab_lacunas")
+}
+```
+
+</details>
+
+Para conferir uma saída específica (mapa, posições ao longo do tempo e classificação),
+abra o app de auditoria: `Rscript app_auditoria/rodar.R` e escolha a linha, o dia e o horário.

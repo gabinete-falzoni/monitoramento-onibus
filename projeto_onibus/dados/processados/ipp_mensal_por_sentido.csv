@@ -1,0 +1,7 @@
+line_id,mes,direction_id,programadas_total,programadas_validas,no_horario,com_atraso,antecipadas,quase_completas,partida_sem_viagem_completa,possivelmente_nao_realizadas,inconclusivas,pontuais_b,pontuais_c,IPP_pct,IPP_b_pct,IPP_c_pct,realizadas_pct,nao_realizadas_pct,inconclusivas_pct
+701A-10,2026-08,0,63,0,0,0,0,0,0,0,0,0,0,,,,,,
+701A-10,2026-08,1,63,2,1,0,0,0,1,0,0,2,2,50,100,100,50,0,0
+701A-10,2026-09,0,1662,1662,576,376,289,23,67,63,268,881,997,34.66,53.01,59.99,74.67,3.79,16.13
+701A-10,2026-09,1,1662,1660,639,422,270,10,36,65,218,882,1002,38.49,53.13,60.36,80.18,3.92,13.13
+7267-10,2026-08,0,69,0,0,0,0,0,0,0,0,0,0,,,,,,
+7267-10,2026-09,0,1820,1820,1030,367,169,5,13,91,145,1184,1327,56.59,65.05,72.91,86.04,5,7.97

@@ -1,0 +1,13 @@
+verificacao,resultado,detalhe
+viagens: inicio <= fim,OK,0 violações
+viagens: duracao coerente com timestamps,OK,""
+viagens: distancias nao negativas,OK,""
+viagens: trip_id unico,OK,""
+viagens: parciais nao contadas como completas,OK,""
+auditoria: scheduled_trip_id unico,OK,""
+auditoria: uma classificacao por saida,OK,""
+auditoria: viagem associada a no maximo uma saida,OK,0 duplicadas
+auditoria: associacoes apenas em programacao valida,OK,""
+auditoria: percentuais entre 0 e 100,OK,""
+auditoria: soma das categorias == total programado,OK,""
+registros: inventario == soma por linha,OK,"inventario 902725, linhas 902725"
